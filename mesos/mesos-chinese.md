@@ -75,3 +75,16 @@ Mesos 提供了在同一个 slave 上运行的框架之间的性能隔离，通�
 因为 Mesos 中的的任务调度是一个分布式过程，它需要在面对失败的时候拥有稳定性和高效率。Mesos 使用了三种技术来达到这个目标。
 
 第一，因为一些框架会一直拒绝某些资源，Mesos 会短路化处理拒绝过程，通过 filter 机制来避免和 master 的交互过程。我们现在提供了两种过滤器，第一个是“仅向列表 L 中的 nodes 发放 offer”；“仅使用最新的空闲的 R resource 向 node 提供资源”。然后，其他类型的预测型过滤器也是有的。注意和常规的限制性描述语言不一样的是，过滤器提供的语义仅仅是 true 或者 false，表示某个 node 上的一个框架会接受或者拒绝一份 offer 上的资源包，所以可以非常快的在 master 上运行。任何 resource 一旦没有通过过滤器，就会被看作会被框架拒绝。
+
+—— translated in 2022/3/9
+
+第二，因为框架对 resource offer 作出响应也需要一定的时间，Mesos 面向框架的分配集群来计算 resource offer（这句话没看懂，啥意思？原文是 Mesos counts resources offered to a framework towards its allocation of the cluster。直译的话就是，Mesos 面向框架的的集群分配计算给到它的 resource）。对于提升框架对于 resource offer 的响应时间是个不错的激励，而且可以快速的过滤掉框架不需要的 resource offer。
+
+第三，如果一个框架长时间没有对一个 resource offer 进行有效的响应，Mesos 会撤销 resource offer，然后把资源给到其他的框架。
+
+## 容错性
+由于所有的框架都以来 Mesos master，所以 master 的容错就是整个 Mesos 容错的关键，为了做到容错性，我们把 master 设计成了 **软状态（soft state）**，这样的话，一个新的 master 就可以从 slaves 和框架调度器中的信息完全重建出它的内部状态。特别是，master 仅有的状态仅是处于活动状态的 slave 节点，框架和运行中的 tasks。这些信息对于计算每个框架正在使用多少资源是有效的，还能用来运行分配策略。我们同时运行许多个热备的 master 节点，通过 zookeeper 来做 leader 选举，当现在的 master 节点失败的时候，slaves 和调度器连接到下一个被选举出来的 master 节点，然后重新填充状态信息。
+
+除了处理 master 失败的情况之外，Mesos 也报告节点失败，处理框架的调度器崩溃。框架然后可以选一个策略对这些失败作出响应动作。
+
+最后，为了处理调度器失败，Mesos 允许一个框架注册多个调度器，这样当其中一个失败的时候，另一个就会被 master 通知到来处理后续的动作。框架必须使用它们自己的机制来分享调度器之间的状态。
